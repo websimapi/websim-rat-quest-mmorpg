@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rat Quest MMORPG</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="game-container">
+        <div id="loading-screen">
+            <div class="loading-content">
+                <h1>RAT QUEST</h1>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <p>Loading the rat world...</p>
+            </div>
+        </div>
+        
+        <div id="main-menu" class="hidden">
+            <div class="menu-container">
+                <h1>RAT QUEST</h1>
+                <div class="menu-buttons">
+                    <button id="play-button">Play</button>
+                    <button id="options-button">Options</button>
+                    <button id="credits-button">Credits</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="game-ui" class="hidden">
+            <div id="health-bar">
+                <div class="bar-label">HP</div>
+                <div class="bar-outer">
+                    <div id="health-fill" class="bar-inner"></div>
+                </div>
+            </div>
+            
+            <div id="hunger-bar">
+                <div class="bar-label">Hunger</div>
+                <div class="bar-outer">
+                    <div id="hunger-fill" class="bar-inner"></div>
+                </div>
+            </div>
+            
+            <div id="inventory-button" class="ui-button">
+                <svg viewBox="0 0 24 24">
+                    <path d="M4 8h16v13H4z" fill="#7a5c3d"/>
+                    <path d="M20 8l-3-4H7L4 8" fill="#91724f"/>
+                </svg>
+            </div>
+            
+            <div id="map-button" class="ui-button">
+                <svg viewBox="0 0 24 24">
+                    <path d="M20.5 3l-0.16 0.03L15 5.1 9 3 3.36 4.9c-0.21 0.07-0.36 0.25-0.36 0.48V20.5c0 0.28 0.22 0.5 0.5 0.5l0.16-0.03L9 18.9l6 2.1 5.64-1.9c0.21-0.07 0.36-0.25 0.36-0.48V3.5c0-0.28-0.22-0.5-0.5-0.5z" fill="#91724f"/>
+                </svg>
+            </div>
+            
+            <div id="minimap">
+                <!-- Minimap will be rendered here -->
+            </div>
+            
+            <div id="notification-area"></div>
+        </div>
+        
+        <div id="inventory-panel" class="game-panel hidden">
+            <div class="panel-header">
+                <h2>Rat Inventory</h2>
+                <button class="close-button">X</button>
+            </div>
+            <div class="inventory-grid">
+                <!-- Inventory slots will be generated here -->
+            </div>
+            <div class="inventory-info">
+                <div>Weight: <span id="current-weight">0</span>/<span id="max-weight">20</span></div>
+                <div>Gold: <span id="gold-amount">0</span></div>
+            </div>
+        </div>
+        
+        <div id="world-map-panel" class="game-panel hidden">
+            <div class="panel-header">
+                <h2>World Map</h2>
+                <button class="close-button">X</button>
+            </div>
+            <div id="world-map">
+                <!-- World map will be rendered here -->
+            </div>
+            <div class="map-legend">
+                <div class="legend-item"><span class="legend-color city"></span> Cities</div>
+                <div class="legend-item"><span class="legend-color farm"></span> Farmland</div>
+                <div class="legend-item"><span class="legend-color forest"></span> Forest</div>
+                <div class="legend-item"><span class="legend-color player"></span> You</div>
+            </div>
+        </div>
+        
+        <canvas id="game-canvas"></canvas>
+        
+        <div id="debug-panel" class="hidden">
+            <div>FPS: <span id="fps">0</span></div>
+            <div>Position: <span id="player-position">0,0,0</span></div>
+            <div>Zone: <span id="current-zone">None</span></div>
+        </div>
+    </div>
+
+    <script type="module" src="js/game.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
