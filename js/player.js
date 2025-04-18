@@ -312,12 +312,12 @@ class Player {
     }
     
     pickupItem(item, index) {
-        // Add item to inventory
+        // Add item to inventory using userData properties
         this.game.state.playerData.inventory.push({
-            id: item.id,
-            name: item.name,
-            type: item.type,
-            value: item.value,
+            id: item.userData.itemId,
+            name: item.userData.itemName,
+            type: item.userData.itemType,
+            value: item.userData.itemValue,
             count: 1
         });
         
@@ -326,7 +326,7 @@ class Player {
         this.game.world.items.splice(index, 1);
         
         // Show notification
-        this.game.ui.showNotification(`Picked up ${item.name}`);
+        this.game.ui.showNotification(`Picked up ${item.userData.itemName}`);
         
         // Update UI
         if (document.getElementById('inventory-panel').classList.contains('hidden') === false) {
@@ -364,4 +364,3 @@ class Player {
 }
 
 export { Player };
-

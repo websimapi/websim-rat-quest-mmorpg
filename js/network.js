@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 // This is a simple mock for network functionality
 // In a real MMORPG, this would connect to a server
 
@@ -305,5 +307,17 @@ class NetworkManager {
     }
 }
 
-export { NetworkManager };
+class CSS2DObject extends THREE.Object3D {
+    constructor(element) {
+        super();
+        this.element = element || document.createElement('div');
+        this.element.style.position = 'absolute';
+        this.element.style.userSelect = 'none';
+        
+        this.addEventListener('removed', () => {
+            this.element.parentNode?.removeChild(this.element);
+        });
+    }
+}
 
+export { NetworkManager };

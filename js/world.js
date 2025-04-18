@@ -669,11 +669,11 @@ class World {
         item.position.set(posX, posY + 0.1, posZ);
         item.castShadow = true;
         
-        // Add item properties
-        item.id = itemType.id;
-        item.name = itemType.name;
-        item.type = itemType.type;
-        item.value = itemType.value;
+        // Store item properties in userData instead of directly on the mesh
+        item.userData.itemId = itemType.id;
+        item.userData.itemName = itemType.name;
+        item.userData.itemType = itemType.type;
+        item.userData.itemValue = itemType.value;
         
         // Make it slightly rotate and hover
         item.userData.baseY = posY + 0.1;
@@ -800,4 +800,3 @@ class World {
 }
 
 export { World };
-
