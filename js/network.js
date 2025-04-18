@@ -78,6 +78,8 @@ class NetworkManager {
         // Only create models when game is playing and world is loaded
         if (!this.game.world) return;
         
+        const ratScale = this.game.world.RAT_SCALE;
+        
         // Simple placeholder for NPC model
         const group = new THREE.Group();
         
@@ -90,25 +92,93 @@ class NetworkManager {
             default: color = 0xAAAAAA;
         }
         
-        // Create a simple rat model (similar to player but different color)
-        const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.5, 4, 8);
+        // Create a rat model similar to player but with different color
+        // Body
+        const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.5, 8, 16);
         const bodyMaterial = new THREE.MeshStandardMaterial({ color });
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.rotation.z = Math.PI / 2;
+        body.castShadow = true;
         group.add(body);
         
+        // Head
         const headGeometry = new THREE.SphereGeometry(0.2, 16, 12);
         const headMaterial = new THREE.MeshStandardMaterial({ color });
         const head = new THREE.Mesh(headGeometry, headMaterial);
         head.position.set(0.4, 0.1, 0);
+        head.castShadow = true;
         group.add(head);
+        
+        // Eyes
+        const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+        const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        
+        const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        leftEye.position.set(0.5, 0.15, 0.12);
+        group.add(leftEye);
+        
+        const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        rightEye.position.set(0.5, 0.15, -0.12);
+        group.add(rightEye);
+        
+        // Add clothing/accessories based on NPC type
+        if (npc.type === 'merchant') {
+            // Add a little hat and small bag
+            const hatGeometry = new THREE.ConeGeometry(0.25, 0.3, 8);
+            const hatMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const hat = new THREE.Mesh(hatGeometry, hatMaterial);
+            hat.position.set(0.3, 0.35, 0);
+            hat.rotation.z = Math.PI / 12;
+            group.add(hat);
+            
+            const bagGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.2);
+            const bagMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const bag = new THREE.Mesh(bagGeometry, bagMaterial);
+            bag.position.set(-0.2, 0, 0.3);
+            group.add(bag);
+        } else if (npc.type === 'quest_giver') {
+            // Add a wizard hat or scroll
+            const hatGeometry = new THREE.ConeGeometry(0.25, 0.5, 8);
+            const hatMaterial = new THREE.MeshStandardMaterial({ color: 0x4169E1 });
+            const hat = new THREE.Mesh(hatGeometry, hatMaterial);
+            hat.position.set(0.3, 0.45, 0);
+            hat.rotation.z = Math.PI / 12;
+            group.add(hat);
+            
+            const starGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const starMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFFFF,
+                emissive: 0xFFFFFF,
+                emissiveIntensity: 0.5
+            });
+            const star = new THREE.Mesh(starGeometry, starMaterial);
+            star.position.set(0, 0.4, 0);
+            hat.add(star);
+        } else if (npc.type === 'guard') {
+            // Add armor or helmet
+            const helmetGeometry = new THREE.SphereGeometry(0.25, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+            const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
+            helmet.position.set(0.3, 0.25, 0);
+            helmet.rotation.z = -Math.PI / 12;
+            group.add(helmet);
+            
+            // Shield on back
+            const shieldGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
+            const shieldMaterial = new THREE.MeshStandardMaterial({ color: 0x8B0000 });
+            const shield = new THREE.Mesh(shieldGeometry, shieldMaterial);
+            shield.position.set(-0.2, 0.1, 0);
+            shield.rotation.y = Math.PI / 2;
+            group.add(shield);
+        }
         
         // Add to the scene
         group.position.set(npc.position.x, npc.position.y, npc.position.z);
         group.rotation.y = npc.rotation;
         
-        // Scale the NPC
-        group.scale.set(0.5, 0.5, 0.5);
+        // Scale the NPC to match world proportions
+        // The NPC should be the same size as the player
+        group.scale.set(1, 1, 1);
         
         // Add to scene
         this.game.scene.add(group);

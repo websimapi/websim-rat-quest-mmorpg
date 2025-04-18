@@ -27,11 +27,15 @@ class Player {
     }
     
     createPlayerModel() {
-        // Create a simple placeholder rat model
+        // The world is scaled up to make the rat seem small
+        // Get the rat scale from world for consistency
+        const ratScale = this.game.world ? this.game.world.RAT_SCALE : 20;
+        
+        // Create a more detailed rat model
         const ratGroup = new THREE.Group();
         
         // Body
-        const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.5, 4, 8);
+        const bodyGeometry = new THREE.CapsuleGeometry(0.25, 0.5, 8, 16);
         const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x777777 });
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.rotation.z = Math.PI / 2;
@@ -46,6 +50,14 @@ class Player {
         head.castShadow = true;
         ratGroup.add(head);
         
+        // Nose
+        const noseGeometry = new THREE.SphereGeometry(0.06, 8, 8);
+        const noseMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        const nose = new THREE.Mesh(noseGeometry, noseMaterial);
+        nose.position.set(0.58, 0.12, 0);
+        nose.scale.x = 1.2;
+        ratGroup.add(nose);
+        
         // Eyes
         const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
         const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
@@ -58,9 +70,21 @@ class Player {
         rightEye.position.set(0.5, 0.15, -0.12);
         ratGroup.add(rightEye);
         
+        // Eye shine
+        const shineGeometry = new THREE.SphereGeometry(0.015, 8, 8);
+        const shineMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0xFFFFFF, emissiveIntensity: 0.5 });
+        
+        const leftShine = new THREE.Mesh(shineGeometry, shineMaterial);
+        leftShine.position.set(0.03, 0.03, 0.02);
+        leftEye.add(leftShine);
+        
+        const rightShine = new THREE.Mesh(shineGeometry, shineMaterial);
+        rightShine.position.set(0.03, 0.03, -0.02);
+        rightEye.add(rightShine);
+        
         // Ears
         const earGeometry = new THREE.ConeGeometry(0.1, 0.2, 8);
-        const earMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 });
+        const earMaterial = new THREE.MeshStandardMaterial({ color: 0x666666 });
         
         const leftEar = new THREE.Mesh(earGeometry, earMaterial);
         leftEar.position.set(0.35, 0.25, 0.15);
@@ -74,23 +98,52 @@ class Player {
         rightEar.rotation.z = -Math.PI / 3;
         ratGroup.add(rightEar);
         
-        // Tail
-        const tailCurve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(-0.4, 0, 0),
-            new THREE.Vector3(-0.6, 0.1, 0),
-            new THREE.Vector3(-0.8, 0, 0),
-            new THREE.Vector3(-1, -0.1, 0)
-        ]);
+        // Inner ears
+        const innerEarGeometry = new THREE.ConeGeometry(0.06, 0.12, 8);
+        const innerEarMaterial = new THREE.MeshStandardMaterial({ color: 0xFFC0CB });
         
-        const tailGeometry = new THREE.TubeGeometry(tailCurve, 8, 0.05, 8, false);
-        const tailMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 });
+        const leftInnerEar = new THREE.Mesh(innerEarGeometry, innerEarMaterial);
+        leftInnerEar.position.set(0, 0.02, 0);
+        leftEar.add(leftInnerEar);
+        
+        const rightInnerEar = new THREE.Mesh(innerEarGeometry, innerEarMaterial);
+        rightInnerEar.position.set(0, 0.02, 0);
+        rightEar.add(rightInnerEar);
+        
+        // Whiskers
+        const whiskerMaterial = new THREE.LineBasicMaterial({ color: 0xDDDDDD });
+        
+        for (let i = 0; i < 6; i++) {
+            const points = [];
+            points.push(new THREE.Vector3(0.55, 0.1, (i < 3 ? 0.1 : -0.1)));
+            points.push(new THREE.Vector3(0.75, 0.1 + (i % 3 - 1) * 0.05, (i < 3 ? 0.2 : -0.2)));
+            
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const whisker = new THREE.Line(geometry, whiskerMaterial);
+            ratGroup.add(whisker);
+        }
+        
+        // Tail
+        const tailPoints = [];
+        for (let i = 0; i < 10; i++) {
+            const t = i / 9;
+            tailPoints.push(new THREE.Vector3(
+                -0.4 - t * 0.8,
+                0.1 * Math.sin(t * Math.PI),
+                0
+            ));
+        }
+        
+        const tailCurve = new THREE.CatmullRomCurve3(tailPoints);
+        const tailGeometry = new THREE.TubeGeometry(tailCurve, 20, 0.05, 8, false);
+        const tailMaterial = new THREE.MeshStandardMaterial({ color: 0x666666 });
         const tail = new THREE.Mesh(tailGeometry, tailMaterial);
         tail.castShadow = true;
         ratGroup.add(tail);
         
         // Legs
         const legGeometry = new THREE.CapsuleGeometry(0.05, 0.2, 4, 8);
-        const legMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 });
+        const legMaterial = new THREE.MeshStandardMaterial({ color: 0x666666 });
         
         const frontLeftLeg = new THREE.Mesh(legGeometry, legMaterial);
         frontLeftLeg.position.set(0.2, -0.2, 0.2);
@@ -117,7 +170,7 @@ class Player {
         this.cameraPivot.position.set(0, 0.5, 0);
         
         // Add the model to the scene
-        ratGroup.scale.set(0.5, 0.5, 0.5);
+        ratGroup.scale.set(1, 1, 1); // Size of rat is now properly scaled relative to world
         ratGroup.position.y = 0.25;
         
         this.model = new THREE.Group();
@@ -126,6 +179,18 @@ class Player {
         
         // Create the collider
         this.collider = new THREE.Sphere(new THREE.Vector3(0, 0.3, 0), 0.3);
+        
+        // Store animations
+        this.animation = {
+            legs: {
+                frontLeft: frontLeftLeg,
+                frontRight: frontRightLeg,
+                backLeft: backLeftLeg,
+                backRight: backRightLeg
+            },
+            tail: tail,
+            runTime: 0
+        };
     }
     
     spawn() {
@@ -197,6 +262,9 @@ class Player {
         this.collider.center.y = this.model.position.y + 0.3;
         this.collider.center.z = this.model.position.z;
         
+        // Animate the rat model
+        this.animateModel(deltaTime);
+        
         // Check for collisions with world objects
         this.handleCollisions();
         
@@ -210,7 +278,36 @@ class Player {
             
             // Check the current zone
             const currentZone = this.game.world.getZoneAtPosition(this.model.position);
-            document.getElementById('current-zone').textContent = currentZone ? currentZone.type : 'Wilderness';
+            document.getElementById('current-zone').textContent = currentZone ? currentZone.name : 'Wilderness';
+        }
+    }
+    
+    animateModel(deltaTime) {
+        // Only animate if moving
+        if (this.velocity.x !== 0 || this.velocity.z !== 0) {
+            this.animation.runTime += deltaTime * 5 * (this.controls.sprint ? 1.5 : 1.0);
+            
+            // Leg movement
+            const legAngle = Math.PI / 8;
+            
+            // Move legs in alternating pattern for natural walking/running
+            this.animation.legs.frontLeft.rotation.x = Math.PI / 2 + Math.sin(this.animation.runTime) * legAngle;
+            this.animation.legs.backRight.rotation.x = Math.PI / 2 + Math.sin(this.animation.runTime) * legAngle;
+            
+            this.animation.legs.frontRight.rotation.x = Math.PI / 2 + Math.sin(this.animation.runTime + Math.PI) * legAngle;
+            this.animation.legs.backLeft.rotation.x = Math.PI / 2 + Math.sin(this.animation.runTime + Math.PI) * legAngle;
+            
+            // Add a slight body bounce
+            const bodyY = Math.abs(Math.sin(this.animation.runTime * 2)) * 0.05;
+            const ratModel = this.model.children[0];
+            ratModel.position.y = 0.25 + bodyY;
+        } else {
+            // Reset animation when stopped
+            this.animation.runTime = 0;
+            this.animation.legs.frontLeft.rotation.x = Math.PI / 2;
+            this.animation.legs.frontRight.rotation.x = Math.PI / 2;
+            this.animation.legs.backLeft.rotation.x = Math.PI / 2;
+            this.animation.legs.backRight.rotation.x = Math.PI / 2;
         }
     }
     
@@ -286,13 +383,20 @@ class Player {
     }
     
     updateCameraPosition() {
-        // Position the camera behind the player
-        const cameraOffset = new THREE.Vector3();
-        cameraOffset.set(0, 0.5, 2);
+        // Position the camera at an appropriate distance for the rat scale
+        // The rat is small, so the camera should be closer to the ground
+        const ratScale = this.game.world ? this.game.world.RAT_SCALE : 20;
         
-        // Check for camera collisions with world
-        // This is a simplified version - in a real game you'd use raycasting
-        cameraOffset.z = 2;
+        // Set camera position relative to rat size
+        this.cameraPivot.position.y = 0.5;
+        
+        // The camera should be positioned to get a good view without being too far
+        const cameraDistance = 3;
+        this.game.camera.position.set(0, 1, cameraDistance);
+        
+        // Adjust camera FOV to make the world seem larger
+        this.game.camera.fov = 70;
+        this.game.camera.updateProjectionMatrix();
     }
     
     handleCollisions() {

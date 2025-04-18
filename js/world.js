@@ -15,22 +15,72 @@ class World {
         this.items = [];
         this.interactables = [];
         
+        // Define scale factor for the world (rat perspective)
+        this.RAT_SCALE = 20; // Everything will be scaled up to make the rat seem small
+        
         // Texture maps for different terrain types
-        this.terrainTypes = {
-            grass: { color: 0x4CAF50 },
-            dirt: { color: 0x8B4513 },
-            sand: { color: 0xF4A460 },
-            stone: { color: 0x808080 },
-            water: { color: 0x1976D2 }
+        this.terrainTextures = {
+            grass: null,
+            dirt: null,
+            sand: null,
+            stone: null,
+            water: null
         };
+        
+        // Initialize terrain textures
+        this.initTerrainTextures();
+    }
+    
+    initTerrainTextures() {
+        const textureLoader = new THREE.TextureLoader();
+        
+        // Create procedural textures
+        // For grass
+        const grassCanvas = document.createElement('canvas');
+        grassCanvas.width = 512;
+        grassCanvas.height = 512;
+        const grassCtx = grassCanvas.getContext('2d');
+        grassCtx.fillStyle = '#4CAF50';
+        grassCtx.fillRect(0, 0, 512, 512);
+        // Add some texture variation
+        for (let i = 0; i < 5000; i++) {
+            const x = Math.random() * 512;
+            const y = Math.random() * 512;
+            const size = 1 + Math.random() * 2;
+            grassCtx.fillStyle = Math.random() > 0.5 ? '#3B8F3D' : '#5CBF60';
+            grassCtx.fillRect(x, y, size, size);
+        }
+        this.terrainTextures.grass = new THREE.CanvasTexture(grassCanvas);
+        this.terrainTextures.grass.wrapS = THREE.RepeatWrapping;
+        this.terrainTextures.grass.wrapT = THREE.RepeatWrapping;
+        this.terrainTextures.grass.repeat.set(32, 32);
+        
+        // For dirt
+        const dirtCanvas = document.createElement('canvas');
+        dirtCanvas.width = 512;
+        dirtCanvas.height = 512;
+        const dirtCtx = dirtCanvas.getContext('2d');
+        dirtCtx.fillStyle = '#8B4513';
+        dirtCtx.fillRect(0, 0, 512, 512);
+        for (let i = 0; i < 5000; i++) {
+            const x = Math.random() * 512;
+            const y = Math.random() * 512;
+            const size = 1 + Math.random() * 3;
+            dirtCtx.fillStyle = Math.random() > 0.5 ? '#6B3313' : '#9B5523';
+            dirtCtx.fillRect(x, y, size, size);
+        }
+        this.terrainTextures.dirt = new THREE.CanvasTexture(dirtCanvas);
+        this.terrainTextures.dirt.wrapS = THREE.RepeatWrapping;
+        this.terrainTextures.dirt.wrapT = THREE.RepeatWrapping;
+        this.terrainTextures.dirt.repeat.set(32, 32);
     }
     
     generateWorld() {
         // Create skybox
         this.createSkybox();
         
-        // Create ground
-        this.createGround();
+        // Create terrain
+        this.createTerrain();
         
         // Generate world zones
         this.generateZones();
@@ -88,23 +138,20 @@ class World {
         this.game.scene.add(sun);
     }
     
-    createGround() {
-        // Create a simple flat ground plane
-        const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 128, 128);
-        const groundMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x4CAF50,
-            roughness: 0.8,
-            metalness: 0.1
-        });
+    createTerrain() {
+        // Create a heightmap-based terrain
+        const resolution = 256; // Higher resolution for more detailed terrain
+        const size = 2000;
+        const heightMapResolution = 256;
         
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
+        // Generate heightmap
+        const heightMap = this.generateHeightMap(heightMapResolution);
         
-        this.game.scene.add(ground);
+        // Create geometry
+        const geometry = new THREE.PlaneGeometry(size, size, resolution, resolution);
         
-        // Deform ground with simplex noise
-        const vertices = groundGeometry.attributes.position.array;
+        // Apply heightmap to geometry
+        const vertices = geometry.attributes.position.array;
         for (let i = 0; i < vertices.length; i += 3) {
             const x = vertices[i];
             const z = vertices[i + 2];
@@ -114,10 +161,100 @@ class World {
         }
         
         // Update normals for proper lighting
-        groundGeometry.computeVertexNormals();
+        geometry.computeVertexNormals();
+        
+        // Create material with blended textures
+        const material = new THREE.MeshStandardMaterial({
+            map: this.terrainTextures.grass,
+            roughness: 0.8,
+            metalness: 0.1,
+            vertexColors: true
+        });
+        
+        // Create mesh
+        const terrain = new THREE.Mesh(geometry, material);
+        terrain.rotation.x = -Math.PI / 2;
+        terrain.receiveShadow = true;
+        this.terrain = terrain;
+        
+        // Add vertex colors based on height
+        if (geometry.hasAttribute('color')) {
+            const colors = geometry.attributes.color.array;
+            
+            for (let i = 0, j = 0; i < vertices.length; i += 3, j += 3) {
+                const height = vertices[i + 1];
+                
+                if (height < -3) {
+                    // Water
+                    colors[j] = 0.1;
+                    colors[j + 1] = 0.5;
+                    colors[j + 2] = 0.8;
+                } else if (height < 0) {
+                    // Sand
+                    colors[j] = 0.95;
+                    colors[j + 1] = 0.9;
+                    colors[j + 2] = 0.6;
+                } else if (height < 5) {
+                    // Grass
+                    colors[j] = 0.3;
+                    colors[j + 1] = 0.7;
+                    colors[j + 2] = 0.3;
+                } else if (height < 12) {
+                    // Dirt/Rock
+                    colors[j] = 0.5;
+                    colors[j + 1] = 0.4;
+                    colors[j + 2] = 0.3;
+                } else {
+                    // Snow
+                    const t = Math.min((height - 12) / 8, 1);
+                    colors[j] = 0.5 * (1 - t) + 0.9 * t;
+                    colors[j + 1] = 0.4 * (1 - t) + 0.9 * t;
+                    colors[j + 2] = 0.3 * (1 - t) + 0.9 * t;
+                }
+            }
+        } else {
+            // If no color attribute exists, create it
+            const colors = new Float32Array(vertices.length);
+            
+            for (let i = 0, j = 0; i < vertices.length; i += 3, j += 3) {
+                const height = vertices[i + 1];
+                
+                if (height < -3) {
+                    // Water
+                    colors[j] = 0.1;
+                    colors[j + 1] = 0.5;
+                    colors[j + 2] = 0.8;
+                } else if (height < 0) {
+                    // Sand
+                    colors[j] = 0.95;
+                    colors[j + 1] = 0.9;
+                    colors[j + 2] = 0.6;
+                } else if (height < 5) {
+                    // Grass
+                    colors[j] = 0.3;
+                    colors[j + 1] = 0.7;
+                    colors[j + 2] = 0.3;
+                } else if (height < 12) {
+                    // Dirt/Rock
+                    colors[j] = 0.5;
+                    colors[j + 1] = 0.4;
+                    colors[j + 2] = 0.3;
+                } else {
+                    // Snow
+                    const t = Math.min((height - 12) / 8, 1);
+                    colors[j] = 0.5 * (1 - t) + 0.9 * t;
+                    colors[j + 1] = 0.4 * (1 - t) + 0.9 * t;
+                    colors[j + 2] = 0.3 * (1 - t) + 0.9 * t;
+                }
+            }
+            
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        }
+        
+        this.game.scene.add(terrain);
         
         // Add water plane
-        const waterGeometry = new THREE.PlaneGeometry(2000, 2000);
+        const waterGeometry = new THREE.PlaneGeometry(size, size);
         const waterMaterial = new THREE.MeshStandardMaterial({
             color: 0x1976D2,
             transparent: true,
@@ -128,173 +265,674 @@ class World {
         
         const water = new THREE.Mesh(waterGeometry, waterMaterial);
         water.rotation.x = -Math.PI / 2;
-        water.position.y = -5;
+        water.position.y = -3;
         this.game.scene.add(water);
     }
     
-    getHeightAt(x, z) {
-        // Large scale terrain variation
-        const largeScale = this.simplex.noise(x * 0.001, z * 0.001) * 20;
+    generateHeightMap(resolution) {
+        const heightMap = new Float32Array(resolution * resolution);
         
-        // Medium scale details
-        const mediumScale = this.simplex.noise(x * 0.01, z * 0.01) * 5;
+        for (let z = 0; z < resolution; z++) {
+            for (let x = 0; x < resolution; x++) {
+                const index = z * resolution + x;
+                const nx = x / resolution - 0.5;
+                const nz = z / resolution - 0.5;
+                
+                heightMap[index] = this.getHeightAt(nx * 2000, nz * 2000);
+            }
+        }
         
-        // Small scale details
-        const smallScale = this.simplex.noise(x * 0.05, z * 0.05) * 1;
-        
-        return largeScale + mediumScale + smallScale;
+        return heightMap;
     }
     
-    generateZones() {
-        // Define zones in the world (cities, farms, forests, etc.)
-        const cityCount = 3;
-        const farmCount = 8;
-        const forestCount = 12;
+    getHeightAt(x, z) {
+        // Large scale terrain variation - mountains and valleys
+        const largeScale = this.simplex.noise(x * 0.0005, z * 0.0005) * 30;
         
-        // Create cities
-        for (let i = 0; i < cityCount; i++) {
-            const x = (Math.random() - 0.5) * this.worldSize;
-            const z = (Math.random() - 0.5) * this.worldSize;
-            const size = 30 + Math.random() * 50;
+        // Medium scale details - hills and dips
+        const mediumScale = this.simplex.noise(x * 0.002, z * 0.002) * 10;
+        
+        // Small scale details - bumps and texture
+        const smallScale = this.simplex.noise(x * 0.01, z * 0.01) * 2;
+        
+        // Micro details - very small bumps for texture
+        const microScale = this.simplex.noise(x * 0.05, z * 0.05) * 0.5;
+        
+        return largeScale + mediumScale + smallScale + microScale;
+    }
+    
+    populateCity(chunk, chunkX, chunkZ, zone) {
+        const ratScale = this.RAT_SCALE;
+        
+        // Rats are small, so buildings should be much larger
+        for (let i = 0; i < 5; i++) {
+            const buildingHeight = (2 + Math.random() * 5) * ratScale;
+            const buildingWidth = (2 + Math.random() * 3) * ratScale;
+            const buildingDepth = (2 + Math.random() * 3) * ratScale;
             
-            this.zones.push({
-                type: 'city',
-                name: this.generateCityName(),
-                position: new THREE.Vector3(x, this.getHeightAt(x, z), z),
-                radius: size,
-                buildings: []
-            });
+            const geometry = new THREE.BoxGeometry(buildingWidth, buildingHeight, buildingDepth);
+            const material = new THREE.MeshStandardMaterial({ color: 0xdddddd });
+            const building = new THREE.Mesh(geometry, material);
+            
+            const offsetX = (Math.random() - 0.5) * this.chunkSize;
+            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
+            
+            const posX = offsetX;
+            const posZ = offsetZ;
+            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
+            
+            building.position.set(posX, posY + buildingHeight / 2, posZ);
+            building.castShadow = true;
+            building.receiveShadow = true;
+            
+            // Add doors and windows
+            this.addBuildingDetails(building, buildingWidth, buildingHeight, buildingDepth);
+            
+            // Make buildings interactable
+            building.userData = {
+                interactable: true,
+                type: 'building',
+                interact: (player) => {
+                    this.game.ui.showNotification(`Entered ${zone.name} building`);
+                    // TODO: Handle building entry
+                }
+            };
+            
+            this.interactables.push(building);
+            chunk.add(building);
         }
         
-        // Create farms
-        for (let i = 0; i < farmCount; i++) {
-            const x = (Math.random() - 0.5) * this.worldSize;
-            const z = (Math.random() - 0.5) * this.worldSize;
-            const size = 20 + Math.random() * 30;
-            
-            this.zones.push({
-                type: 'farm',
-                name: this.generateFarmName(),
-                position: new THREE.Vector3(x, this.getHeightAt(x, z), z),
-                radius: size,
-                crops: []
-            });
-        }
+        // Add roads
+        this.addRoads(chunk, chunkX, chunkZ);
+    }
+    
+    addBuildingDetails(building, width, height, depth) {
+        // Add door
+        const doorWidth = 0.7 * this.RAT_SCALE;
+        const doorHeight = 1.2 * this.RAT_SCALE;
+        const doorDepth = 0.1 * this.RAT_SCALE;
         
-        // Create forests
-        for (let i = 0; i < forestCount; i++) {
-            const x = (Math.random() - 0.5) * this.worldSize;
-            const z = (Math.random() - 0.5) * this.worldSize;
-            const size = 40 + Math.random() * 60;
-            
-            this.zones.push({
-                type: 'forest',
-                name: this.generateForestName(),
-                position: new THREE.Vector3(x, this.getHeightAt(x, z), z),
-                radius: size,
-                trees: []
-            });
-        }
+        const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, doorDepth);
+        const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+        const door = new THREE.Mesh(doorGeometry, doorMaterial);
         
-        // Mark spawn zone
-        this.zones.push({
-            type: 'spawn',
-            name: 'Rat Hole',
-            position: new THREE.Vector3(0, 0, 0),
-            radius: 10
+        door.position.set(0, -height/2 + doorHeight/2, depth/2 + 0.01);
+        building.add(door);
+        
+        // Add windows
+        const windowSize = 0.8 * this.RAT_SCALE;
+        const windowDepth = 0.1 * this.RAT_SCALE;
+        const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, windowDepth);
+        const windowMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x87CEEB,
+            transparent: true,
+            opacity: 0.7
         });
         
-        // Visualize on minimap
-        this.drawWorldMap();
-    }
-    
-    generateCityName() {
-        const prefixes = ['Rat', 'Whisker', 'Tail', 'Cheese', 'Shadow', 'Nibble', 'Dark', 'Grey', 'Scurry'];
-        const suffixes = ['ville', 'town', 'burg', 'field', 'haven', 'port', 'ford', 'bridge', 'market'];
+        // Add several windows
+        const windowRows = Math.floor(height / (windowSize * 2));
+        const windowColsPerSide = Math.floor(width / (windowSize * 2));
         
-        return `${prefixes[Math.floor(Math.random() * prefixes.length)]}${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
-    }
-    
-    generateFarmName() {
-        const prefixes = ['Green', 'Sunny', 'Pleasant', 'Fertile', 'Peaceful', 'Harvest', 'Bounty', 'Golden'];
-        const suffixes = ['Acres', 'Fields', 'Meadows', 'Valley', 'Ranch', 'Gardens', 'Orchard', 'Pastures'];
-        
-        return `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
-    }
-    
-    generateForestName() {
-        const prefixes = ['Whispering', 'Ancient', 'Dark', 'Misty', 'Shadow', 'Elder', 'Wild', 'Emerald'];
-        const suffixes = ['Woods', 'Forest', 'Grove', 'Thicket', 'Wilds', 'Timberland', 'Copse', 'Woodland'];
-        
-        return `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
-    }
-    
-    getZoneAtPosition(position) {
-        for (const zone of this.zones) {
-            const distance = position.distanceTo(zone.position);
-            if (distance < zone.radius) {
-                return zone;
-            }
-        }
-        return null;
-    }
-    
-    drawWorldMap() {
-        const mapElement = document.getElementById('world-map');
-        mapElement.innerHTML = '';
-        
-        // Create SVG for the map
-        const svgNS = "http://www.w3.org/2000/svg";
-        const svg = document.createElementNS(svgNS, "svg");
-        svg.setAttribute("width", "100%");
-        svg.setAttribute("height", "100%");
-        svg.setAttribute("viewBox", `-${this.worldSize/2} -${this.worldSize/2} ${this.worldSize} ${this.worldSize}`);
-        
-        // Add zones
-        for (const zone of this.zones) {
-            const circle = document.createElementNS(svgNS, "circle");
-            circle.setAttribute("cx", zone.position.x);
-            circle.setAttribute("cy", zone.position.z);
-            circle.setAttribute("r", zone.radius);
+        for (let row = 0; row < windowRows; row++) {
+            const y = -height/2 + (row + 1) * height / (windowRows + 1);
             
-            switch(zone.type) {
-                case 'city':
-                    circle.setAttribute("fill", "#e6b800");
-                    break;
-                case 'farm':
-                    circle.setAttribute("fill", "#55aa55");
-                    break;
-                case 'forest':
-                    circle.setAttribute("fill", "#006622");
-                    break;
-                case 'spawn':
-                    circle.setAttribute("fill", "#aa3939");
-                    break;
-                default:
-                    circle.setAttribute("fill", "#888");
+            // Front windows
+            for (let col = 0; col < windowColsPerSide; col++) {
+                const x = -width/2 + (col + 1) * width / (windowColsPerSide + 1);
+                
+                const frontWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+                frontWindow.position.set(x, y, depth/2 + 0.01);
+                building.add(frontWindow);
+                
+                const backWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+                backWindow.position.set(x, y, -depth/2 - 0.01);
+                building.add(backWindow);
             }
             
-            circle.setAttribute("opacity", "0.7");
+            // Side windows
+            const sideWindowCount = Math.floor(depth / (windowSize * 2));
+            for (let col = 0; col < sideWindowCount; col++) {
+                const z = -depth/2 + (col + 1) * depth / (sideWindowCount + 1);
+                
+                const leftWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+                leftWindow.position.set(-width/2 - 0.01, y, z);
+                leftWindow.rotation.y = Math.PI / 2;
+                building.add(leftWindow);
+                
+                const rightWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+                rightWindow.position.set(width/2 + 0.01, y, z);
+                rightWindow.rotation.y = Math.PI / 2;
+                building.add(rightWindow);
+            }
+        }
+    }
+    
+    addRoads(chunk, chunkX, chunkZ) {
+        const roadWidth = 5 * this.RAT_SCALE;
+        const roadGeometry = new THREE.PlaneGeometry(this.chunkSize, roadWidth);
+        const roadMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x333333,
+            roughness: 0.9
+        });
+        
+        // East-West road
+        const eastWestRoad = new THREE.Mesh(roadGeometry, roadMaterial);
+        eastWestRoad.rotation.x = -Math.PI / 2;
+        eastWestRoad.position.y = 0.05; // Slightly above ground
+        chunk.add(eastWestRoad);
+        
+        // North-South road
+        const northSouthRoad = new THREE.Mesh(roadGeometry, roadMaterial);
+        northSouthRoad.rotation.x = -Math.PI / 2;
+        northSouthRoad.rotation.z = Math.PI / 2;
+        northSouthRoad.position.y = 0.05;
+        chunk.add(northSouthRoad);
+    }
+    
+    populateFarm(chunk, chunkX, chunkZ, zone) {
+        const ratScale = this.RAT_SCALE;
+        
+        // Create farmland
+        const fieldSize = 15 * ratScale;
+        const geometry = new THREE.PlaneGeometry(fieldSize, fieldSize, 10, 10);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 0x8B4513,
+            roughness: 0.9
+        });
+        
+        // Create a grid pattern for crops
+        const vertices = geometry.attributes.position.array;
+        for (let i = 0; i < vertices.length; i += 3) {
+            const x = vertices[i];
+            const z = vertices[i + 2];
             
-            // Add tooltip
-            const title = document.createElementNS(svgNS, "title");
-            title.textContent = zone.name;
-            circle.appendChild(title);
-            
-            svg.appendChild(circle);
+            // Create furrows pattern
+            vertices[i + 1] = 0.2 * Math.sin(x * 0.5) + 0.1 * Math.cos(z * 0.7);
+        }
+        geometry.computeVertexNormals();
+        
+        const field = new THREE.Mesh(geometry, material);
+        field.rotation.x = -Math.PI / 2;
+        field.position.y = 0.05; // Slightly above ground
+        field.receiveShadow = true;
+        
+        chunk.add(field);
+        
+        // Add crops in orderly rows
+        const cropRows = 10;
+        const cropsPerRow = 10;
+        const cropSpacing = fieldSize / cropRows;
+        
+        for (let row = 0; row < cropRows; row++) {
+            for (let col = 0; col < cropsPerRow; col++) {
+                // Skip some crops to create variation
+                if (Math.random() < 0.2) continue;
+                
+                const cropHeight = (0.5 + Math.random() * 0.5) * ratScale;
+                const cropGeometry = new THREE.CylinderGeometry(0.1 * ratScale, 0.1 * ratScale, cropHeight, 8);
+                const cropMaterial = new THREE.MeshStandardMaterial({ color: 0x90EE90 });
+                const crop = new THREE.Mesh(cropGeometry, cropMaterial);
+                
+                const posX = -fieldSize/2 + (row + 0.5) * cropSpacing;
+                const posZ = -fieldSize/2 + (col + 0.5) * cropSpacing;
+                const posY = this.getHeightAt(chunkX * this.chunkSize + posX, chunkZ * this.chunkSize + posZ);
+                
+                crop.position.set(posX, posY + cropHeight/2, posZ);
+                crop.castShadow = true;
+                
+                // Add some variation in rotation
+                crop.rotation.x = (Math.random() - 0.5) * 0.2;
+                crop.rotation.z = (Math.random() - 0.5) * 0.2;
+                
+                // Make crops interactable (collectible food)
+                crop.userData = {
+                    interactable: true,
+                    type: 'crop',
+                    interact: (player) => {
+                        this.game.ui.showNotification('Harvested food');
+                        this.game.state.playerData.hunger = Math.min(
+                            this.game.state.playerData.maxHunger,
+                            this.game.state.playerData.hunger + 20
+                        );
+                        this.game.ui.updateHungerBar();
+                        chunk.remove(crop);
+                    }
+                };
+                
+                this.interactables.push(crop);
+                chunk.add(crop);
+            }
         }
         
-        // Add player marker
-        const playerMarker = document.createElementNS(svgNS, "circle");
-        playerMarker.setAttribute("id", "player-marker");
-        playerMarker.setAttribute("cx", this.game.state.playerData.position.x);
-        playerMarker.setAttribute("cy", this.game.state.playerData.position.z);
-        playerMarker.setAttribute("r", "5");
-        playerMarker.setAttribute("fill", "#ff4d4d");
-        svg.appendChild(playerMarker);
+        // Add a farmhouse
+        const houseWidth = 8 * ratScale;
+        const houseHeight = 5 * ratScale;
+        const houseDepth = 6 * ratScale;
         
-        // Add map to DOM
-        mapElement.appendChild(svg);
+        const houseGeometry = new THREE.BoxGeometry(houseWidth, houseHeight, houseDepth);
+        const houseMaterial = new THREE.MeshStandardMaterial({ color: 0xA0522D });
+        const house = new THREE.Mesh(houseGeometry, houseMaterial);
+        
+        house.position.set(0, houseHeight/2, 0);
+        house.castShadow = true;
+        house.receiveShadow = true;
+        
+        // Add roof
+        const roofGeometry = new THREE.ConeGeometry(houseWidth * 0.7, houseHeight * 0.5, 4);
+        const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x8B0000 });
+        const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+        
+        roof.position.set(0, houseHeight + houseHeight * 0.25, 0);
+        roof.rotation.y = Math.PI / 4;
+        roof.castShadow = true;
+        
+        // Add house details
+        this.addBuildingDetails(house, houseWidth, houseHeight, houseDepth);
+        
+        // Make house interactable
+        house.userData = {
+            interactable: true,
+            type: 'building',
+            interact: (player) => {
+                this.game.ui.showNotification(`Entered farmhouse at ${zone.name}`);
+                // TODO: Handle farmhouse entry
+            }
+        };
+        
+        this.interactables.push(house);
+        chunk.add(house);
+        chunk.add(roof);
+    }
+    
+    populateForest(chunk, chunkX, chunkZ, zone) {
+        const ratScale = this.RAT_SCALE;
+        
+        // Add trees
+        for (let i = 0; i < 15; i++) {
+            const treeHeight = (4 + Math.random() * 6) * ratScale;
+            
+            // Tree trunk
+            const trunkGeometry = new THREE.CylinderGeometry(
+                0.3 * ratScale, 
+                0.4 * ratScale, 
+                treeHeight * 0.7, 
+                8
+            );
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            
+            // Tree leaves
+            const leavesGeometry = new THREE.ConeGeometry(
+                treeHeight * 0.4, 
+                treeHeight * 0.6, 
+                8
+            );
+            const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.y = treeHeight * 0.65;
+            
+            // Create tree group
+            const tree = new THREE.Group();
+            tree.add(trunk);
+            tree.add(leaves);
+            
+            const offsetX = (Math.random() - 0.5) * this.chunkSize;
+            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
+            
+            const posX = offsetX;
+            const posZ = offsetZ;
+            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
+            
+            tree.position.set(posX, posY, posZ);
+            tree.castShadow = true;
+            
+            chunk.add(tree);
+        }
+        
+        // Add bushes with berries (food source)
+        for (let i = 0; i < 8; i++) {
+            const bushSize = (0.8 + Math.random() * 0.4) * ratScale;
+            const bushGeometry = new THREE.SphereGeometry(bushSize, 8, 6);
+            const bushMaterial = new THREE.MeshStandardMaterial({ color: 0x006400 });
+            const bush = new THREE.Mesh(bushGeometry, bushMaterial);
+            
+            const offsetX = (Math.random() - 0.5) * this.chunkSize;
+            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
+            
+            const posX = offsetX;
+            const posZ = offsetZ;
+            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
+            
+            bush.position.set(posX, posY + bushSize * 0.8, posZ);
+            bush.castShadow = true;
+            
+            // Add berries
+            const berrySize = 0.1 * ratScale;
+            const berryGeometry = new THREE.SphereGeometry(berrySize, 8, 8);
+            const berryMaterial = new THREE.MeshStandardMaterial({ color: 0xFF0000 });
+            
+            for (let j = 0; j < 10; j++) {
+                const berry = new THREE.Mesh(berryGeometry, berryMaterial);
+                const angle = Math.random() * Math.PI * 2;
+                const radius = bushSize * 0.8;
+                berry.position.set(
+                    Math.cos(angle) * radius,
+                    (Math.random() - 0.3) * bushSize,
+                    Math.sin(angle) * radius
+                );
+                bush.add(berry);
+            }
+            
+            // Make bush interactable (collectible food)
+            bush.userData = {
+                interactable: true,
+                type: 'food',
+                interact: (player) => {
+                    this.game.ui.showNotification('Collected berries');
+                    this.game.state.playerData.hunger = Math.min(
+                        this.game.state.playerData.maxHunger,
+                        this.game.state.playerData.hunger + 15
+                    );
+                    this.game.ui.updateHungerBar();
+                    chunk.remove(bush);
+                }
+            };
+            
+            this.interactables.push(bush);
+            chunk.add(bush);
+        }
+        
+        // Add fallen logs and mushrooms
+        for (let i = 0; i < 3; i++) {
+            const logLength = (2 + Math.random() * 3) * ratScale;
+            const logRadius = 0.3 * ratScale;
+            
+            const logGeometry = new THREE.CylinderGeometry(logRadius, logRadius, logLength, 8);
+            const logMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const log = new THREE.Mesh(logGeometry, logMaterial);
+            
+            const offsetX = (Math.random() - 0.5) * this.chunkSize;
+            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
+            
+            const posX = offsetX;
+            const posZ = offsetZ;
+            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
+            
+            log.position.set(posX, posY + logRadius, posZ);
+            log.rotation.z = Math.random() * 0.3;
+            log.rotation.y = Math.random() * Math.PI;
+            log.castShadow = true;
+            log.receiveShadow = true;
+            
+            chunk.add(log);
+            
+            // Add mushrooms on log
+            for (let j = 0; j < 5; j++) {
+                const mushroomSize = (0.1 + Math.random() * 0.15) * ratScale;
+                
+                const stemGeometry = new THREE.CylinderGeometry(
+                    mushroomSize * 0.2, 
+                    mushroomSize * 0.3, 
+                    mushroomSize * 2, 
+                    8
+                );
+                const capGeometry = new THREE.SphereGeometry(mushroomSize, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+                
+                const stemMaterial = new THREE.MeshStandardMaterial({ color: 0xEEEEEE });
+                const capMaterial = new THREE.MeshStandardMaterial({ color: 0xFF5555 });
+                
+                const stem = new THREE.Mesh(stemGeometry, stemMaterial);
+                const cap = new THREE.Mesh(capGeometry, capMaterial);
+                
+                cap.position.y = mushroomSize;
+                
+                const mushroom = new THREE.Group();
+                mushroom.add(stem);
+                mushroom.add(cap);
+                
+                // Position mushroom along log
+                const logPosition = (Math.random() - 0.5) * logLength * 0.8;
+                const angle = Math.random() * Math.PI * 2;
+                
+                mushroom.position.set(
+                    logPosition,
+                    logRadius,
+                    0
+                );
+                
+                // Match log rotation but keep mushroom upright
+                mushroom.rotation.z = -log.rotation.z;
+                mushroom.rotation.y = angle;
+                
+                log.add(mushroom);
+            }
+        }
+    }
+    
+    populateSpawn(chunk, chunkX, chunkZ, zone) {
+        const ratScale = this.RAT_SCALE;
+        
+        // Create rat hole entrance
+        const holeGeometry = new THREE.CircleGeometry(1 * ratScale, 32);
+        const holeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        const hole = new THREE.Mesh(holeGeometry, holeMaterial);
+        
+        hole.rotation.x = -Math.PI / 2;
+        hole.position.y = 0.01;
+        
+        chunk.add(hole);
+        
+        // Add tunnel mouth around the hole
+        const tunnelGeometry = new THREE.TorusGeometry(1 * ratScale, 0.3 * ratScale, 16, 32, Math.PI);
+        const tunnelMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+        const tunnel = new THREE.Mesh(tunnelGeometry, tunnelMaterial);
+        
+        tunnel.rotation.x = Math.PI / 2;
+        tunnel.position.y = 0.01;
+        tunnel.position.z = -1 * ratScale;
+        
+        chunk.add(tunnel);
+        
+        // Add tutorial elements
+        const signHeight = 1.5 * ratScale;
+        const signWidth = 2 * ratScale;
+        
+        const postGeometry = new THREE.CylinderGeometry(0.1 * ratScale, 0.1 * ratScale, signHeight, 8);
+        const signboardGeometry = new THREE.BoxGeometry(signWidth, signWidth * 0.7, 0.1 * ratScale);
+        
+        const woodMaterial = new THREE.MeshStandardMaterial({ color: 0xA0522D });
+        
+        const post = new THREE.Mesh(postGeometry, woodMaterial);
+        post.position.set(2 * ratScale, signHeight / 2, 0);
+        
+        const signboard = new THREE.Mesh(signboardGeometry, woodMaterial);
+        signboard.position.set(0, signHeight * 0.8, 0);
+        signboard.rotation.y = -Math.PI / 4;
+        
+        const sign = new THREE.Group();
+        sign.add(post);
+        sign.add(signboard);
+        sign.castShadow = true;
+        
+        // Add text texture to sign
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        
+        ctx.fillStyle = '#A0522D';
+        ctx.fillRect(0, 0, 256, 128);
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Welcome to Rat Quest!', 128, 30);
+        ctx.font = '18px Arial';
+        ctx.fillText('WASD to move', 128, 60);
+        ctx.fillText('E to interact', 128, 90);
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        const textMaterial = new THREE.MeshBasicMaterial({ map: texture });
+        
+        const textPlane = new THREE.PlaneGeometry(signWidth * 0.9, signWidth * 0.6);
+        const textMesh = new THREE.Mesh(textPlane, textMaterial);
+        textMesh.position.z = 0.06 * ratScale;
+        
+        signboard.add(textMesh);
+        
+        // Make sign interactable
+        sign.userData = {
+            interactable: true,
+            type: 'sign',
+            interact: (player) => {
+                this.game.ui.showNotification('Welcome to Rat Quest! Use WASD to move, Space to jump, E to interact.');
+            }
+        };
+        
+        this.interactables.push(sign);
+        chunk.add(sign);
+    }
+    
+    populateWilderness(chunk, chunkX, chunkZ) {
+        const ratScale = this.RAT_SCALE;
+        
+        // Add some rocks
+        for (let i = 0; i < 5; i++) {
+            const rockSize = (0.5 + Math.random() * 1.5) * ratScale;
+            const rockGeometry = new THREE.DodecahedronGeometry(rockSize, 1);
+            const rockMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x808080,
+                roughness: 0.9
+            });
+            
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+            
+            const offsetX = (Math.random() - 0.5) * this.chunkSize;
+            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
+            
+            const posX = offsetX;
+            const posZ = offsetZ;
+            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
+            
+            rock.position.set(posX, posY, posZ);
+            // Add random rotation and scale distortion for natural look
+            rock.rotation.x = Math.random() * Math.PI;
+            rock.rotation.y = Math.random() * Math.PI;
+            rock.rotation.z = Math.random() * Math.PI;
+            rock.scale.x = 0.8 + Math.random() * 0.4;
+            rock.scale.y = 0.8 + Math.random() * 0.4;
+            rock.scale.z = 0.8 + Math.random() * 0.4;
+            
+            rock.castShadow = true;
+            rock.receiveShadow = true;
+            
+            chunk.add(rock);
+        }
+        
+        // Add grass clumps
+        for (let i = 0; i < 15; i++) {
+            const grassGeometry = new THREE.PlaneGeometry(ratScale, ratScale);
+            const grassMaterial = new THREE.MeshStandardMaterial({
+                color: 0x4CAF50,
+                transparent: true,
+                alphaTest: 0.5,
+                side: THREE.DoubleSide
+            });
+            
+            // Create cross-shaped grass clump
+            const grassClump = new THREE.Group();
+            
+            for (let j = 0; j < 3; j++) {
+                const blade = new THREE.Mesh(grassGeometry, grassMaterial);
+                blade.rotation.y = j * Math.PI / 3;
+                grassClump.add(blade);
+            }
+            
+            const offsetX = (Math.random() - 0.5) * this.chunkSize;
+            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
+            
+            const posX = offsetX;
+            const posZ = offsetZ;
+            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
+            
+            grassClump.position.set(posX, posY, posZ);
+            grassClump.scale.set(0.7 + Math.random() * 0.6, 0.7 + Math.random() * 0.6, 0.7 + Math.random() * 0.6);
+            
+            chunk.add(grassClump);
+        }
+        
+        // Small chance to spawn a treasure or item
+        if (Math.random() < 0.3) {
+            this.spawnItem(chunk, chunkX, chunkZ);
+        }
+    }
+    
+    spawnItem(chunk, chunkX, chunkZ) {
+        const ratScale = this.RAT_SCALE;
+        
+        const itemTypes = [
+            { id: 'cheese', name: 'Cheese', type: 'food', value: 5, color: 0xFFD700 },
+            { id: 'coin', name: 'Gold Coin', type: 'treasure', value: 1, color: 0xFFD700 },
+            { id: 'gem', name: 'Gem', type: 'treasure', value: 10, color: 0x00FFFF }
+        ];
+        
+        const itemType = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+        
+        let geometry;
+        if (itemType.id === 'cheese') {
+            // Create a wedge shape for cheese
+            geometry = new THREE.CylinderGeometry(
+                0.3 * ratScale, 
+                0.3 * ratScale, 
+                0.2 * ratScale, 
+                8, 
+                1, 
+                false, 
+                0, 
+                Math.PI * 1.5
+            );
+        } else if (itemType.id === 'coin') {
+            geometry = new THREE.CylinderGeometry(
+                0.2 * ratScale, 
+                0.2 * ratScale, 
+                0.05 * ratScale, 
+                16
+            );
+        } else {
+            geometry = new THREE.OctahedronGeometry(0.15 * ratScale, 0);
+        }
+        
+        const material = new THREE.MeshStandardMaterial({ 
+            color: itemType.color,
+            metalness: itemType.id === 'coin' ? 0.8 : 0.2,
+            roughness: itemType.id === 'gem' ? 0.1 : 0.7
+        });
+        const item = new THREE.Mesh(geometry, material);
+        
+        const offsetX = (Math.random() - 0.5) * this.chunkSize;
+        const offsetZ = (Math.random() - 0.5) * this.chunkSize;
+        
+        const posX = offsetX;
+        const posZ = offsetZ;
+        const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
+        
+        item.position.set(posX, posY + 0.1 * ratScale, posZ);
+        item.castShadow = true;
+        
+        // Store item properties in userData instead of directly on the mesh
+        item.userData = {
+            itemId: itemType.id,
+            itemName: itemType.name,
+            itemType: itemType.type,
+            itemValue: itemType.value,
+            baseY: posY + 0.1 * ratScale,
+            hoverOffset: Math.random() * Math.PI * 2,
+            rotateSpeed: 0.5 + Math.random() * 0.5
+        };
+        
+        this.items.push(item);
+        chunk.add(item);
     }
     
     updateChunks() {
@@ -384,304 +1022,95 @@ class World {
         }
     }
     
-    populateCity(chunk, chunkX, chunkZ, zone) {
-        // Simple placeholder for city buildings
-        for (let i = 0; i < 5; i++) {
-            const buildingHeight = 1 + Math.random() * 3;
-            const buildingWidth = 1 + Math.random() * 2;
-            const buildingDepth = 1 + Math.random() * 2;
-            
-            const geometry = new THREE.BoxGeometry(buildingWidth, buildingHeight, buildingDepth);
-            const material = new THREE.MeshStandardMaterial({ color: 0xdddddd });
-            const building = new THREE.Mesh(geometry, material);
-            
-            const offsetX = (Math.random() - 0.5) * this.chunkSize;
-            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
-            
-            const posX = offsetX;
-            const posZ = offsetZ;
-            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
-            
-            building.position.set(posX, posY + buildingHeight / 2, posZ);
-            building.castShadow = true;
-            building.receiveShadow = true;
-            
-            // Make buildings interactable
-            building.userData = {
-                interactable: true,
-                type: 'building',
-                interact: (player) => {
-                    this.game.ui.showNotification(`Entered ${zone.name} building`);
-                    // TODO: Handle building entry
-                }
-            };
-            
-            this.interactables.push(building);
-            chunk.add(building);
-        }
-    }
-    
-    populateFarm(chunk, chunkX, chunkZ, zone) {
-        // Create farmland
-        const fieldSize = 10;
-        const geometry = new THREE.PlaneGeometry(fieldSize, fieldSize, 1, 1);
-        const material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-        const field = new THREE.Mesh(geometry, material);
-        
-        field.rotation.x = -Math.PI / 2;
-        field.position.set(0, 0.01, 0); // Slightly above ground to prevent z-fighting
-        field.receiveShadow = true;
-        
-        chunk.add(field);
-        
-        // Add crops
-        for (let i = 0; i < 30; i++) {
-            const cropGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
-            const cropMaterial = new THREE.MeshStandardMaterial({ color: 0x90EE90 });
-            const crop = new THREE.Mesh(cropGeometry, cropMaterial);
-            
-            const offsetX = (Math.random() - 0.5) * fieldSize;
-            const offsetZ = (Math.random() - 0.5) * fieldSize;
-            
-            const posX = offsetX;
-            const posZ = offsetZ;
-            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
-            
-            crop.position.set(posX, posY + 0.25, posZ);
-            crop.castShadow = true;
-            
-            // Make crops interactable (collectible food)
-            crop.userData = {
-                interactable: true,
-                type: 'crop',
-                interact: (player) => {
-                    this.game.ui.showNotification('Harvested food');
-                    this.game.state.playerData.hunger = Math.min(
-                        this.game.state.playerData.maxHunger,
-                        this.game.state.playerData.hunger + 20
-                    );
-                    this.game.ui.updateHungerBar();
-                    chunk.remove(crop);
-                }
-            };
-            
-            this.interactables.push(crop);
-            chunk.add(crop);
-        }
-        
-        // Add a farmhouse
-        const houseGeometry = new THREE.BoxGeometry(4, 2, 3);
-        const houseMaterial = new THREE.MeshStandardMaterial({ color: 0xA0522D });
-        const house = new THREE.Mesh(houseGeometry, houseMaterial);
-        
-        house.position.set(0, 1, 0);
-        house.castShadow = true;
-        house.receiveShadow = true;
-        
-        // Make house interactable
-        house.userData = {
-            interactable: true,
-            type: 'building',
-            interact: (player) => {
-                this.game.ui.showNotification(`Entered farmhouse at ${zone.name}`);
-                // TODO: Handle farmhouse entry
+    getZoneAtPosition(position) {
+        for (const zone of this.zones) {
+            const distance = position.distanceTo(zone.position);
+            if (distance < zone.radius) {
+                return zone;
             }
-        };
-        
-        this.interactables.push(house);
-        chunk.add(house);
+        }
+        return null;
     }
     
-    populateForest(chunk, chunkX, chunkZ, zone) {
-        // Add trees
-        for (let i = 0; i < 15; i++) {
-            // Tree trunk
-            const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.3, 2, 8);
-            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+    generateZones() {
+        // Define zones in the world (cities, farms, forests, etc.)
+        const cityCount = 3;
+        const farmCount = 8;
+        const forestCount = 12;
+        
+        // Create cities
+        for (let i = 0; i < cityCount; i++) {
+            const x = (Math.random() - 0.5) * this.worldSize;
+            const z = (Math.random() - 0.5) * this.worldSize;
+            const size = 30 + Math.random() * 50;
             
-            // Tree leaves
-            const leavesGeometry = new THREE.ConeGeometry(1, 2, 8);
-            const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
-            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
-            leaves.position.y = 2;
-            
-            // Create tree group
-            const tree = new THREE.Group();
-            tree.add(trunk);
-            tree.add(leaves);
-            
-            const offsetX = (Math.random() - 0.5) * this.chunkSize;
-            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
-            
-            const posX = offsetX;
-            const posZ = offsetZ;
-            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
-            
-            tree.position.set(posX, posY, posZ);
-            tree.castShadow = true;
-            
-            chunk.add(tree);
+            this.zones.push({
+                type: 'city',
+                name: this.generateCityName(),
+                position: new THREE.Vector3(x, this.getHeightAt(x, z), z),
+                radius: size,
+                buildings: []
+            });
         }
         
-        // Add bushes with berries (food source)
-        for (let i = 0; i < 8; i++) {
-            const bushGeometry = new THREE.SphereGeometry(0.5, 8, 6);
-            const bushMaterial = new THREE.MeshStandardMaterial({ color: 0x006400 });
-            const bush = new THREE.Mesh(bushGeometry, bushMaterial);
+        // Create farms
+        for (let i = 0; i < farmCount; i++) {
+            const x = (Math.random() - 0.5) * this.worldSize;
+            const z = (Math.random() - 0.5) * this.worldSize;
+            const size = 20 + Math.random() * 30;
             
-            const offsetX = (Math.random() - 0.5) * this.chunkSize;
-            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
-            
-            const posX = offsetX;
-            const posZ = offsetZ;
-            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
-            
-            bush.position.set(posX, posY + 0.25, posZ);
-            bush.castShadow = true;
-            
-            // Add berries
-            const berryGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-            const berryMaterial = new THREE.MeshStandardMaterial({ color: 0xFF0000 });
-            
-            for (let j = 0; j < 5; j++) {
-                const berry = new THREE.Mesh(berryGeometry, berryMaterial);
-                const angle = Math.random() * Math.PI * 2;
-                const radius = 0.3 + Math.random() * 0.2;
-                berry.position.set(
-                    Math.cos(angle) * radius,
-                    0.3 + Math.random() * 0.2,
-                    Math.sin(angle) * radius
-                );
-                bush.add(berry);
-            }
-            
-            // Make bush interactable (collectible food)
-            bush.userData = {
-                interactable: true,
-                type: 'food',
-                interact: (player) => {
-                    this.game.ui.showNotification('Collected berries');
-                    this.game.state.playerData.hunger = Math.min(
-                        this.game.state.playerData.maxHunger,
-                        this.game.state.playerData.hunger + 15
-                    );
-                    this.game.ui.updateHungerBar();
-                    chunk.remove(bush);
-                }
-            };
-            
-            this.interactables.push(bush);
-            chunk.add(bush);
+            this.zones.push({
+                type: 'farm',
+                name: this.generateFarmName(),
+                position: new THREE.Vector3(x, this.getHeightAt(x, z), z),
+                radius: size,
+                crops: []
+            });
         }
+        
+        // Create forests
+        for (let i = 0; i < forestCount; i++) {
+            const x = (Math.random() - 0.5) * this.worldSize;
+            const z = (Math.random() - 0.5) * this.worldSize;
+            const size = 40 + Math.random() * 60;
+            
+            this.zones.push({
+                type: 'forest',
+                name: this.generateForestName(),
+                position: new THREE.Vector3(x, this.getHeightAt(x, z), z),
+                radius: size,
+                trees: []
+            });
+        }
+        
+        // Mark spawn zone
+        this.zones.push({
+            type: 'spawn',
+            name: 'Rat Hole',
+            position: new THREE.Vector3(0, 0, 0),
+            radius: 10
+        });
     }
     
-    populateSpawn(chunk, chunkX, chunkZ, zone) {
-        // Create rat hole entrance
-        const holeGeometry = new THREE.CircleGeometry(1, 32);
-        const holeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
-        const hole = new THREE.Mesh(holeGeometry, holeMaterial);
+    generateCityName() {
+        const prefixes = ['Rat', 'Whisker', 'Tail', 'Cheese', 'Shadow', 'Nibble', 'Dark', 'Grey', 'Scurry'];
+        const suffixes = ['ville', 'town', 'burg', 'field', 'haven', 'port', 'ford', 'bridge', 'market'];
         
-        hole.rotation.x = -Math.PI / 2;
-        hole.position.set(0, 0.01, 0);
-        
-        chunk.add(hole);
-        
-        // Add some tutorial elements
-        const signGeometry = new THREE.BoxGeometry(1, 1, 0.1);
-        const signMaterial = new THREE.MeshStandardMaterial({ color: 0xA0522D });
-        const sign = new THREE.Mesh(signGeometry, signMaterial);
-        
-        sign.position.set(2, 0.5, 0);
-        sign.rotation.y = -Math.PI / 4;
-        sign.castShadow = true;
-        
-        // Make sign interactable
-        sign.userData = {
-            interactable: true,
-            type: 'sign',
-            interact: (player) => {
-                this.game.ui.showNotification('Welcome to Rat Quest! Use WASD to move, Space to jump, E to interact.');
-            }
-        };
-        
-        this.interactables.push(sign);
-        chunk.add(sign);
+        return `${prefixes[Math.floor(Math.random() * prefixes.length)]}${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
     }
     
-    populateWilderness(chunk, chunkX, chunkZ) {
-        // Add some rocks
-        for (let i = 0; i < 3; i++) {
-            const rockGeometry = new THREE.SphereGeometry(0.5 + Math.random() * 0.5, 6, 6);
-            const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
-            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
-            
-            const offsetX = (Math.random() - 0.5) * this.chunkSize;
-            const offsetZ = (Math.random() - 0.5) * this.chunkSize;
-            
-            const posX = offsetX;
-            const posZ = offsetZ;
-            const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
-            
-            rock.position.set(posX, posY, posZ);
-            rock.scale.y = 0.5 + Math.random() * 0.5;
-            rock.rotation.y = Math.random() * Math.PI * 2;
-            rock.castShadow = true;
-            rock.receiveShadow = true;
-            
-            chunk.add(rock);
-        }
+    generateFarmName() {
+        const prefixes = ['Green', 'Sunny', 'Pleasant', 'Fertile', 'Peaceful', 'Harvest', 'Bounty', 'Golden'];
+        const suffixes = ['Acres', 'Fields', 'Meadows', 'Valley', 'Ranch', 'Gardens', 'Orchard', 'Pastures'];
         
-        // Small chance to spawn a treasure or item
-        if (Math.random() < 0.2) {
-            this.spawnItem(chunk, chunkX, chunkZ);
-        }
+        return `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
     }
     
-    spawnItem(chunk, chunkX, chunkZ) {
-        const itemTypes = [
-            { id: 'cheese', name: 'Cheese', type: 'food', value: 5, color: 0xFFD700 },
-            { id: 'coin', name: 'Gold Coin', type: 'treasure', value: 1, color: 0xFFD700 },
-            { id: 'gem', name: 'Gem', type: 'treasure', value: 10, color: 0x00FFFF }
-        ];
+    generateForestName() {
+        const prefixes = ['Whispering', 'Ancient', 'Dark', 'Misty', 'Shadow', 'Elder', 'Wild', 'Emerald'];
+        const suffixes = ['Woods', 'Forest', 'Grove', 'Thicket', 'Wilds', 'Timberland', 'Copse', 'Woodland'];
         
-        const itemType = itemTypes[Math.floor(Math.random() * itemTypes.length)];
-        
-        let geometry;
-        if (itemType.id === 'cheese') {
-            geometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 8);
-        } else if (itemType.id === 'coin') {
-            geometry = new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16);
-        } else {
-            geometry = new THREE.OctahedronGeometry(0.2, 0);
-        }
-        
-        const material = new THREE.MeshStandardMaterial({ color: itemType.color });
-        const item = new THREE.Mesh(geometry, material);
-        
-        const offsetX = (Math.random() - 0.5) * this.chunkSize;
-        const offsetZ = (Math.random() - 0.5) * this.chunkSize;
-        
-        const posX = offsetX;
-        const posZ = offsetZ;
-        const posY = this.getHeightAt(chunkX * this.chunkSize + offsetX, chunkZ * this.chunkSize + offsetZ);
-        
-        item.position.set(posX, posY + 0.1, posZ);
-        item.castShadow = true;
-        
-        // Store item properties in userData instead of directly on the mesh
-        item.userData.itemId = itemType.id;
-        item.userData.itemName = itemType.name;
-        item.userData.itemType = itemType.type;
-        item.userData.itemValue = itemType.value;
-        
-        // Make it slightly rotate and hover
-        item.userData.baseY = posY + 0.1;
-        item.userData.hoverOffset = 0;
-        item.userData.rotateSpeed = 0.5 + Math.random() * 0.5;
-        
-        this.items.push(item);
-        chunk.add(item);
+        return `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
     }
     
     updateMinimap(playerPos) {
